@@ -1,0 +1,106 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  linux:
+    name: Linux Build & Test
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.x'
+
+    - name: Build (Debug 64-bit)
+      run: make -C projects/make config=debug_64bit
+
+    - name: Run tests (Debug)
+      run: python3 util/test.py --suffix=_d
+
+    - name: Build (Release 64-bit)
+      run: make -C projects/make config=release_64bit
+
+    - name: Run tests (Release)
+      run: python3 util/test.py
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: wren-linux
+        path: |
+          bin/*
+          lib/*
+
+  macos:
+    name: macOS Build & Test
+    runs-on: macos-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.x'
+
+    - name: Build (Debug 64-bit)
+      run: make -C projects/make.mac config=debug_64bit
+
+    - name: Run tests (Debug)
+      run: python3 util/test.py --suffix=_d
+
+    - name: Build (Release 64-bit)
+      run: make -C projects/make.mac config=release_64bit
+
+    - name: Run tests (Release)
+      run: python3 util/test.py
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: wren-macos
+        path: |
+          bin/*
+          lib/*
+
+  windows:
+    name: Windows Build & Test
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.x'
+
+    - name: Setup MSBuild
+      uses: microsoft/setup-msbuild@v2
+
+    - name: Build (Release 64-bit)
+      working-directory: projects/vs2019
+      run: msbuild wren.sln /p:Configuration=Release /p:Platform=64bit
+
+    - name: Run tests (Release)
+      run: python util/test.py
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: wren-windows
+        path: |
+          bin/*
+          lib/*
