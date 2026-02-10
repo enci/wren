@@ -3489,6 +3489,8 @@ static bool method(Compiler* compiler, Variable classVariable)
   // Compile the method signature.
   signatureFn(&methodCompiler, &signature);
 
+  consumeReturnTypeAnnotation(compiler); // [WREN_TYPE_ANNOTATIONS] -> ReturnType
+
   methodCompiler.isInitializer = signature.type == SIG_INITIALIZER;
   
   if (isStatic && signature.type == SIG_INITIALIZER)
