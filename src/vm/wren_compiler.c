@@ -1293,6 +1293,28 @@ static void ignoreNewlines(Compiler* compiler)
   matchLine(compiler);
 }
 
+// [WREN_TYPE_ANNOTATIONS] Optionally consumes a colon-based type annotation
+// (": TypeName") after a variable name or parameter. The annotation is parsed
+// and discarded (no effect on code generation).
+static void consumeTypeAnnotation(Compiler* compiler)
+{
+  if (match(compiler, TOKEN_COLON))
+  {
+    consume(compiler, TOKEN_NAME, "Expect type name after ':'.");
+  }
+}
+
+// [WREN_TYPE_ANNOTATIONS] Optionally consumes a return type annotation
+// ("-> TypeName") after a method signature. The annotation is parsed and
+// discarded (no effect on code generation).
+static void consumeReturnTypeAnnotation(Compiler* compiler)
+{
+  if (match(compiler, TOKEN_ARROW))
+  {
+    consume(compiler, TOKEN_NAME, "Expect return type name after '->'.");
+  }
+}
+
 // Consumes the current token. Emits an error if it is not a newline. Then
 // discards any duplicate newlines following it.
 static void consumeLine(Compiler* compiler, const char* errorMessage)
@@ -3711,6 +3733,8 @@ static void variableDefinition(Compiler* compiler)
   // in scope in its own initializer.
   consume(compiler, TOKEN_NAME, "Expect variable name.");
   Token nameToken = compiler->parser->previous;
+
+  consumeTypeAnnotation(compiler); // [WREN_TYPE_ANNOTATIONS] var x: Type
 
   // Compile the initializer.
   if (match(compiler, TOKEN_EQ))
