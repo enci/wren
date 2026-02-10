@@ -1868,6 +1868,7 @@ static void finishParameterList(Compiler* compiler, Signature* signature)
 
     // Define a local variable in the method for the parameter.
     declareNamedVariable(compiler);
+    consumeTypeAnnotation(compiler); // [WREN_TYPE_ANNOTATIONS] param: Type
   }
   while (match(compiler, TOKEN_COMMA));
 }
