@@ -3096,6 +3096,8 @@ static void forStatement(Compiler* compiler)
   const char* name = compiler->parser->previous.start;
   int length = compiler->parser->previous.length;
 
+  consumeTypeAnnotation(compiler); // [WREN_TYPE_ANNOTATIONS] for (i: Type in ...)
+
   consume(compiler, TOKEN_IN, "Expect 'in' after loop variable.");
   ignoreNewlines(compiler);
 
