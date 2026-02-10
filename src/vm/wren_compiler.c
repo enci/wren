@@ -69,6 +69,7 @@ typedef enum
   TOKEN_HASH,
   TOKEN_PLUS,
   TOKEN_MINUS,
+  TOKEN_ARROW,       // [WREN_TYPE_ANNOTATIONS] ->
   TOKEN_LTLT,
   TOKEN_GTGT,
   TOKEN_PIPE,
@@ -1108,7 +1109,7 @@ static void nextToken(Parser* parser)
       }
       case '^': makeToken(parser, TOKEN_CARET); return;
       case '+': makeToken(parser, TOKEN_PLUS); return;
-      case '-': makeToken(parser, TOKEN_MINUS); return;
+      case '-': twoCharToken(parser, '>', TOKEN_ARROW, TOKEN_MINUS); return; // [WREN_TYPE_ANNOTATIONS]
       case '~': makeToken(parser, TOKEN_TILDE); return;
       case '?': makeToken(parser, TOKEN_QUESTION); return;
         
@@ -2771,6 +2772,7 @@ GrammarRule rules[] =
   /* TOKEN_HASH          */ UNUSED,
   /* TOKEN_PLUS          */ INFIX_OPERATOR(PREC_TERM, "+"),
   /* TOKEN_MINUS         */ OPERATOR("-"),
+  /* TOKEN_ARROW         */ UNUSED,                                       // [WREN_TYPE_ANNOTATIONS]
   /* TOKEN_LTLT          */ INFIX_OPERATOR(PREC_BITWISE_SHIFT, "<<"),
   /* TOKEN_GTGT          */ INFIX_OPERATOR(PREC_BITWISE_SHIFT, ">>"),
   /* TOKEN_PIPE          */ INFIX_OPERATOR(PREC_BITWISE_OR, "|"),
