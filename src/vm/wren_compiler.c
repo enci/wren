@@ -2635,6 +2635,7 @@ void infixSignature(Compiler* compiler, Signature* signature)
   // Parse the parameter name.
   consume(compiler, TOKEN_LEFT_PAREN, "Expect '(' after operator name.");
   declareNamedVariable(compiler);
+  consumeTypeAnnotation(compiler); // [WREN_TYPE_ANNOTATIONS]
   consume(compiler, TOKEN_RIGHT_PAREN, "Expect ')' after parameter name.");
 }
 
@@ -2660,6 +2661,7 @@ void mixedSignature(Compiler* compiler, Signature* signature)
 
     // Parse the parameter name.
     declareNamedVariable(compiler);
+    consumeTypeAnnotation(compiler); // [WREN_TYPE_ANNOTATIONS]
     consume(compiler, TOKEN_RIGHT_PAREN, "Expect ')' after parameter name.");
   }
 }
@@ -2685,6 +2687,7 @@ static bool maybeSetter(Compiler* compiler, Signature* signature)
   // Parse the value parameter.
   consume(compiler, TOKEN_LEFT_PAREN, "Expect '(' after '='.");
   declareNamedVariable(compiler);
+  consumeTypeAnnotation(compiler); // [WREN_TYPE_ANNOTATIONS]
   consume(compiler, TOKEN_RIGHT_PAREN, "Expect ')' after parameter name.");
 
   signature->arity++;
