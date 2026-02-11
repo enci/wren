@@ -1344,23 +1344,35 @@ static void ignoreNewlines(Compiler* compiler)
 
 // [WREN_TYPE_ANNOTATIONS] Optionally consumes a colon-based type annotation
 // (": TypeName") after a variable name or parameter. The annotation is parsed
-// and discarded (no effect on code generation).
-static void consumeTypeAnnotation(Compiler* compiler)
+// and stored in the TypeChecker for later checking. Sets [typeName] and
+// [typeLength] to the parsed type, or NULL/0 if no annotation was present.
+static void consumeTypeAnnotation(Compiler* compiler,
+                                  const char** typeName, int* typeLength)
 {
   if (match(compiler, TOKEN_COLON))
   {
     consume(compiler, TOKEN_NAME, "Expect type name after ':'.");
+    *typeName = compiler->parser->previous.start;
+    *typeLength = compiler->parser->previous.length;
+  }
+  else
+  {
+    *typeName = NULL;
+    *typeLength = 0;
   }
 }
 
 // [WREN_TYPE_ANNOTATIONS] Optionally consumes a return type annotation
-// ("-> TypeName") after a method signature. The annotation is parsed and
-// discarded (no effect on code generation).
+// ("-> TypeName") after a method signature. The annotation is stored in the
+// TypeChecker for later checking.
 static void consumeReturnTypeAnnotation(Compiler* compiler)
 {
   if (match(compiler, TOKEN_ARROW))
   {
     consume(compiler, TOKEN_NAME, "Expect return type name after '->'.");
+    wrenTypeCheckerSetReturnType(&compiler->typeChecker,
+        compiler->parser->previous.start,
+        compiler->parser->previous.length);
   }
 }
 
@@ -1916,8 +1928,14 @@ static void finishParameterList(Compiler* compiler, Signature* signature)
     validateNumParameters(compiler, ++signature->arity);
 
     // Define a local variable in the method for the parameter.
-    declareNamedVariable(compiler);
-    consumeTypeAnnotation(compiler); // [WREN_TYPE_ANNOTATIONS] param: Type
+    int paramSlot = declareNamedVariable(compiler);
+    const char* paramType = NULL; int paramTypeLen = 0;
+    consumeTypeAnnotation(compiler, &paramType, &paramTypeLen); // [WREN_TYPE_ANNOTATIONS]
+    if (paramType != NULL)
+    {
+      wrenTypeCheckerSetLocalType(&compiler->typeChecker, paramSlot,
+                                  paramType, paramTypeLen);
+    }
   }
   while (match(compiler, TOKEN_COMMA));
 }
@@ -2698,7 +2716,7 @@ void infixSignature(Compiler* compiler, Signature* signature)
   // Parse the parameter name.
   consume(compiler, TOKEN_LEFT_PAREN, "Expect '(' after operator name.");
   declareNamedVariable(compiler);
-  consumeTypeAnnotation(compiler); // [WREN_TYPE_ANNOTATIONS]
+  { const char* t = NULL; int tl = 0; consumeTypeAnnotation(compiler, &t, &tl); } // [WREN_TYPE_ANNOTATIONS]
   consume(compiler, TOKEN_RIGHT_PAREN, "Expect ')' after parameter name.");
 }
 
@@ -2724,7 +2742,7 @@ void mixedSignature(Compiler* compiler, Signature* signature)
 
     // Parse the parameter name.
     declareNamedVariable(compiler);
-    consumeTypeAnnotation(compiler); // [WREN_TYPE_ANNOTATIONS]
+    { const char* t = NULL; int tl = 0; consumeTypeAnnotation(compiler, &t, &tl); } // [WREN_TYPE_ANNOTATIONS]
     consume(compiler, TOKEN_RIGHT_PAREN, "Expect ')' after parameter name.");
   }
 }
@@ -2750,7 +2768,7 @@ static bool maybeSetter(Compiler* compiler, Signature* signature)
   // Parse the value parameter.
   consume(compiler, TOKEN_LEFT_PAREN, "Expect '(' after '='.");
   declareNamedVariable(compiler);
-  consumeTypeAnnotation(compiler); // [WREN_TYPE_ANNOTATIONS]
+  { const char* t = NULL; int tl = 0; consumeTypeAnnotation(compiler, &t, &tl); } // [WREN_TYPE_ANNOTATIONS]
   consume(compiler, TOKEN_RIGHT_PAREN, "Expect ')' after parameter name.");
 
   signature->arity++;
@@ -3164,7 +3182,7 @@ static void forStatement(Compiler* compiler)
   const char* name = compiler->parser->previous.start;
   int length = compiler->parser->previous.length;
 
-  consumeTypeAnnotation(compiler); // [WREN_TYPE_ANNOTATIONS] for (i: Type in ...)
+  { const char* t = NULL; int tl = 0; consumeTypeAnnotation(compiler, &t, &tl); } // [WREN_TYPE_ANNOTATIONS]
 
   consume(compiler, TOKEN_IN, "Expect 'in' after loop variable.");
   ignoreNewlines(compiler);
@@ -3559,7 +3577,7 @@ static bool method(Compiler* compiler, Variable classVariable)
   // Compile the method signature.
   signatureFn(&methodCompiler, &signature);
 
-  consumeReturnTypeAnnotation(compiler); // [WREN_TYPE_ANNOTATIONS] -> ReturnType
+  consumeReturnTypeAnnotation(&methodCompiler); // [WREN_TYPE_ANNOTATIONS] -> ReturnType
 
   methodCompiler.isInitializer = signature.type == SIG_INITIALIZER;
   
@@ -3810,7 +3828,8 @@ static void variableDefinition(Compiler* compiler)
   consume(compiler, TOKEN_NAME, "Expect variable name.");
   Token nameToken = compiler->parser->previous;
 
-  consumeTypeAnnotation(compiler); // [WREN_TYPE_ANNOTATIONS] var x: Type
+  const char* varType = NULL; int varTypeLen = 0;
+  consumeTypeAnnotation(compiler, &varType, &varTypeLen); // [WREN_TYPE_ANNOTATIONS]
 
   // Compile the initializer.
   if (match(compiler, TOKEN_EQ))
@@ -3827,6 +3846,13 @@ static void variableDefinition(Compiler* compiler)
   // Now put it in scope.
   int symbol = declareVariable(compiler, &nameToken);
   defineVariable(compiler, symbol);
+
+  // [WREN_TYPE_ANNOTATIONS] Store the type annotation for this variable.
+  if (varType != NULL && compiler->scopeDepth >= 0)
+  {
+    wrenTypeCheckerSetLocalType(&compiler->typeChecker, symbol,
+                                varType, varTypeLen);
+  }
 }
 
 // Compiles a "definition". These are the statements that bind new variables.
