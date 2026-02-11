@@ -3372,10 +3372,16 @@ void statement(Compiler* compiler)
     // Compile the return value.
     if (peek(compiler) == TOKEN_LINE)
     {
-      // If there's no expression after return, initializers should 
+      // If there's no expression after return, initializers should
       // return 'this' and regular methods should return null
       Code result = compiler->isInitializer ? CODE_LOAD_LOCAL_0 : CODE_NULL;
       emitOp(compiler, result);
+
+      // [WREN_TYPE_ANNOTATIONS] Bare return has type Null (unless initializer).
+      if (!compiler->isInitializer)
+      {
+        wrenTypeCheckerSetExprType(&compiler->typeChecker, "Null", 4);
+      }
     }
     else
     {
@@ -3385,6 +3391,22 @@ void statement(Compiler* compiler)
       }
 
       expression(compiler);
+    }
+
+    // [WREN_TYPE_ANNOTATIONS] Check return expression type against annotation.
+    if (compiler->typeChecker.returnType != NULL &&
+        !wrenTypeCheckerTypesMatch(
+            compiler->typeChecker.returnType,
+            compiler->typeChecker.returnTypeLength,
+            compiler->typeChecker.lastExprType,
+            compiler->typeChecker.lastExprTypeLength))
+    {
+      typeWarning(compiler,
+          "Type mismatch: method expects return type '%.*s' but got '%.*s'.",
+          compiler->typeChecker.returnTypeLength,
+          compiler->typeChecker.returnType,
+          compiler->typeChecker.lastExprTypeLength,
+          compiler->typeChecker.lastExprType);
     }
 
     emitOp(compiler, CODE_RETURN);
