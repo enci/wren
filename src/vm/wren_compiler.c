@@ -497,6 +497,48 @@ static void error(Compiler* compiler, const char* format, ...)
   va_end(args);
 }
 
+// [WREN_TYPE_ANNOTATIONS] Outputs a type warning. Like printError but does NOT
+// set hasError, so compilation continues and the code still runs.
+static void printWarning(Parser* parser, int line, const char* label,
+                         const char* format, va_list args)
+{
+  if (!parser->printErrors) return;
+  if (parser->vm->config.errorFn == NULL) return;
+
+  char message[ERROR_MESSAGE_SIZE];
+  int length = sprintf(message, "%s: ", label);
+  length += vsprintf(message + length, format, args);
+  ASSERT(length < ERROR_MESSAGE_SIZE, "Warning should not exceed buffer.");
+
+  ObjString* module = parser->module->name;
+  const char* module_name = module ? module->value : "<unknown>";
+
+  parser->vm->config.errorFn(parser->vm, WREN_ERROR_COMPILE,
+                             module_name, line, message);
+}
+
+// [WREN_TYPE_ANNOTATIONS] Emits a type mismatch warning at the current token.
+// Does NOT prevent compilation from succeeding.
+static void typeWarning(Compiler* compiler, const char* format, ...)
+{
+  va_list args;
+  va_start(args, format);
+
+  char label[16 + MAX_VARIABLE_NAME + 4 + 1];
+  Token* token = &compiler->parser->previous;
+  if (token->length <= MAX_VARIABLE_NAME)
+  {
+    sprintf(label, "Warning at '%.*s'", token->length, token->start);
+  }
+  else
+  {
+    sprintf(label, "Warning at '%.*s...'", MAX_VARIABLE_NAME, token->start);
+  }
+  printWarning(compiler->parser, token->line, label, format, args);
+
+  va_end(args);
+}
+
 // Adds [constant] to the constant pool and returns its index.
 static int addConstant(Compiler* compiler, Value constant)
 {
@@ -2202,6 +2244,7 @@ static void list(Compiler* compiler, bool canAssign)
   // Allow newlines before the closing ']'.
   ignoreNewlines(compiler);
   consume(compiler, TOKEN_RIGHT_BRACKET, "Expect ']' after list elements.");
+  wrenTypeCheckerSetExprType(&compiler->typeChecker, "List", 4); // [WREN_TYPE_ANNOTATIONS]
 }
 
 // A map literal.
@@ -2233,6 +2276,7 @@ static void map(Compiler* compiler, bool canAssign)
   // Allow newlines before the closing '}'.
   ignoreNewlines(compiler);
   consume(compiler, TOKEN_RIGHT_BRACE, "Expect '}' after map entries.");
+  wrenTypeCheckerSetExprType(&compiler->typeChecker, "Map", 3); // [WREN_TYPE_ANNOTATIONS]
 }
 
 // Unary operators like `-foo`.
@@ -2253,6 +2297,7 @@ static void boolean(Compiler* compiler, bool canAssign)
 {
   emitOp(compiler,
       compiler->parser->previous.type == TOKEN_FALSE ? CODE_FALSE : CODE_TRUE);
+  wrenTypeCheckerSetExprType(&compiler->typeChecker, "Bool", 4); // [WREN_TYPE_ANNOTATIONS]
 }
 
 // Walks the compiler chain to find the compiler for the nearest class
@@ -2452,12 +2497,23 @@ static void name(Compiler* compiler, bool canAssign)
 static void null(Compiler* compiler, bool canAssign)
 {
   emitOp(compiler, CODE_NULL);
+  wrenTypeCheckerSetExprType(&compiler->typeChecker, "Null", 4); // [WREN_TYPE_ANNOTATIONS]
 }
 
 // A number or string literal.
 static void literal(Compiler* compiler, bool canAssign)
 {
   emitConstant(compiler, compiler->parser->previous.value);
+
+  // [WREN_TYPE_ANNOTATIONS] Track the literal type.
+  if (compiler->parser->previous.type == TOKEN_NUMBER)
+  {
+    wrenTypeCheckerSetExprType(&compiler->typeChecker, "Num", 3);
+  }
+  else
+  {
+    wrenTypeCheckerSetExprType(&compiler->typeChecker, "String", 6);
+  }
 }
 
 // A string literal that contains interpolated expressions.
@@ -2864,6 +2920,8 @@ static GrammarRule* getRule(TokenType type)
 // The main entrypoint for the top-down operator precedence parser.
 void parsePrecedence(Compiler* compiler, Precedence precedence)
 {
+  wrenTypeCheckerClearExprType(&compiler->typeChecker); // [WREN_TYPE_ANNOTATIONS]
+
   nextToken(compiler->parser);
   GrammarFn prefix = rules[compiler->parser->previous.type].prefix;
 
@@ -2888,6 +2946,9 @@ void parsePrecedence(Compiler* compiler, Precedence precedence)
     nextToken(compiler->parser);
     GrammarFn infix = rules[compiler->parser->previous.type].infix;
     infix(compiler, canAssign);
+
+    // [WREN_TYPE_ANNOTATIONS] Infix result type is unknown in V1.
+    wrenTypeCheckerClearExprType(&compiler->typeChecker);
   }
 }
 
