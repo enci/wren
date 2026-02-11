@@ -74,3 +74,35 @@ bool wrenTypeCheckerTypesMatch(const char* typeA, int lengthA,
   if (lengthA != lengthB) return false;
   return memcmp(typeA, typeB, lengthA) == 0;
 }
+
+void wrenModuleTypeInfoInit(ModuleTypeInfo* info)
+{
+  info->count = 0;
+}
+
+void wrenModuleTypeInfoSet(ModuleTypeInfo* info, int symbolIndex,
+                           const char* typeName, int typeLength)
+{
+  if (info->count >= MAX_MODULE_TYPE_ENTRIES) return;
+
+  info->symbolIndices[info->count] = symbolIndex;
+  info->typeNames[info->count] = typeName;
+  info->typeLengths[info->count] = typeLength;
+  info->count++;
+}
+
+const char* wrenModuleTypeInfoGet(ModuleTypeInfo* info, int symbolIndex,
+                                  int* length)
+{
+  for (int i = 0; i < info->count; i++)
+  {
+    if (info->symbolIndices[i] == symbolIndex)
+    {
+      *length = info->typeLengths[i];
+      return info->typeNames[i];
+    }
+  }
+
+  *length = 0;
+  return NULL;
+}

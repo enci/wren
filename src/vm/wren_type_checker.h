@@ -58,4 +58,33 @@ void wrenTypeCheckerClearExprType(TypeChecker* typeChecker);
 bool wrenTypeCheckerTypesMatch(const char* typeA, int lengthA,
                                const char* typeB, int lengthB);
 
+// --- Module-level variable type tracking ---
+// Stored in the Parser (shared across all Compilers in a module) so that
+// module variable type annotations are accessible during reassignment checks.
+
+#define MAX_MODULE_TYPE_ENTRIES 512
+
+typedef struct
+{
+  // Sparse table: only populated for module variables that have type annotations.
+  // symbolIndices[i] holds the module symbol index; typeNames[i] / typeLengths[i]
+  // hold the annotation. Pointers point directly into the source code string.
+  int symbolIndices[MAX_MODULE_TYPE_ENTRIES];
+  const char* typeNames[MAX_MODULE_TYPE_ENTRIES];
+  int typeLengths[MAX_MODULE_TYPE_ENTRIES];
+  int count;
+} ModuleTypeInfo;
+
+// Initializes all fields to their default (empty) state.
+void wrenModuleTypeInfoInit(ModuleTypeInfo* info);
+
+// Stores a type annotation for the module variable at [symbolIndex].
+void wrenModuleTypeInfoSet(ModuleTypeInfo* info, int symbolIndex,
+                           const char* typeName, int typeLength);
+
+// Returns the type annotation for the module variable at [symbolIndex],
+// or NULL if none. Sets [length] to the type name length.
+const char* wrenModuleTypeInfoGet(ModuleTypeInfo* info, int symbolIndex,
+                                  int* length);
+
 #endif

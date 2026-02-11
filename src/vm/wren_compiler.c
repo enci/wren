@@ -206,6 +206,10 @@ typedef struct
 
   // If a syntax or compile error has occurred.
   bool hasError;
+
+  // [WREN_TYPE_ANNOTATIONS] Type annotations for module-level variables.
+  // Shared across all Compilers so reassignment checks can find the annotation.
+  ModuleTypeInfo moduleTypes;
 } Parser;
 
 typedef struct
@@ -2416,11 +2420,21 @@ static void bareName(Compiler* compiler, bool canAssign, Variable variable)
     expression(compiler);
 
     // [WREN_TYPE_ANNOTATIONS] Check assignment type against annotation.
-    if (variable.scope == SCOPE_LOCAL)
     {
-      int typeLen;
-      const char* varType = wrenTypeCheckerGetLocalType(
-          &compiler->typeChecker, variable.index, &typeLen);
+      int typeLen = 0;
+      const char* varType = NULL;
+
+      if (variable.scope == SCOPE_LOCAL)
+      {
+        varType = wrenTypeCheckerGetLocalType(
+            &compiler->typeChecker, variable.index, &typeLen);
+      }
+      else if (variable.scope == SCOPE_MODULE)
+      {
+        varType = wrenModuleTypeInfoGet(
+            &compiler->parser->moduleTypes, variable.index, &typeLen);
+      }
+
       if (varType != NULL && !wrenTypeCheckerTypesMatch(
           varType, typeLen,
           compiler->typeChecker.lastExprType,
@@ -3910,10 +3924,19 @@ static void variableDefinition(Compiler* compiler)
   defineVariable(compiler, symbol);
 
   // [WREN_TYPE_ANNOTATIONS] Store the type annotation for this variable.
-  if (varType != NULL && compiler->scopeDepth >= 0)
+  if (varType != NULL)
   {
-    wrenTypeCheckerSetLocalType(&compiler->typeChecker, symbol,
-                                varType, varTypeLen);
+    if (compiler->scopeDepth >= 0)
+    {
+      wrenTypeCheckerSetLocalType(&compiler->typeChecker, symbol,
+                                  varType, varTypeLen);
+    }
+    else
+    {
+      // Module-level variable: store in Parser's shared module type info.
+      wrenModuleTypeInfoSet(&compiler->parser->moduleTypes, symbol,
+                            varType, varTypeLen);
+    }
   }
 }
 
@@ -3981,6 +4004,9 @@ ObjFn* wrenCompile(WrenVM* vm, ObjModule* module, const char* source,
 
   parser.printErrors = printErrors;
   parser.hasError = false;
+
+  // [WREN_TYPE_ANNOTATIONS] Initialize module-level type tracking.
+  wrenModuleTypeInfoInit(&parser.moduleTypes);
 
   // Read the first token into next
   nextToken(&parser);
