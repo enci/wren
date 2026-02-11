@@ -5,6 +5,7 @@
 
 #include "wren_common.h"
 #include "wren_compiler.h"
+#include "wren_type_checker.h" // [WREN_TYPE_ANNOTATIONS]
 #include "wren_vm.h"
 
 #if WREN_DEBUG_DUMP_COMPILED_CODE
@@ -376,6 +377,9 @@ struct sCompiler
   int numAttributes;
   // Attributes for the next class or method.
   ObjMap* attributes;
+
+  // [WREN_TYPE_ANNOTATIONS] Type checker state for this compilation scope.
+  TypeChecker typeChecker;
 };
 
 // Describes where a variable is declared.
@@ -584,6 +588,9 @@ static void initCompiler(Compiler* compiler, Parser* parser, Compiler* parent,
   
   compiler->numAttributes = 0;
   compiler->attributes = wrenNewMap(parser->vm);
+
+  wrenTypeCheckerInit(&compiler->typeChecker); // [WREN_TYPE_ANNOTATIONS]
+
   compiler->fn = wrenNewFunction(parser->vm, parser->module,
                                  compiler->numLocals);
 }

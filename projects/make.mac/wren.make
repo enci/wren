@@ -110,6 +110,7 @@ OBJECTS :=
 
 OBJECTS += $(OBJDIR)/wren_compiler.o
 OBJECTS += $(OBJDIR)/wren_core.o
+OBJECTS += $(OBJDIR)/wren_type_checker.o
 OBJECTS += $(OBJDIR)/wren_debug.o
 OBJECTS += $(OBJDIR)/wren_opt_meta.o
 OBJECTS += $(OBJDIR)/wren_opt_random.o
@@ -200,6 +201,9 @@ $(OBJDIR)/wren_utils.o: ../../src/vm/wren_utils.c
 	@echo $(notdir $<)
 	$(SILENT) $(CC) $(ALL_CFLAGS) $(FORCE_INCLUDE) -o "$@" -MF "$(@:%.o=%.d)" -c "$<"
 $(OBJDIR)/wren_value.o: ../../src/vm/wren_value.c
+	@echo $(notdir $<)
+	$(SILENT) $(CC) $(ALL_CFLAGS) $(FORCE_INCLUDE) -o "$@" -MF "$(@:%.o=%.d)" -c "$<"
+$(OBJDIR)/wren_type_checker.o: ../../src/vm/wren_type_checker.c
 	@echo $(notdir $<)
 	$(SILENT) $(CC) $(ALL_CFLAGS) $(FORCE_INCLUDE) -o "$@" -MF "$(@:%.o=%.d)" -c "$<"
 $(OBJDIR)/wren_vm.o: ../../src/vm/wren_vm.c
