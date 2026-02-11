@@ -41,7 +41,10 @@ EXPECT_PATTERN = re.compile(r'// expect: ?(.*)')
 EXPECT_ERROR_PATTERN = re.compile(r'// expect error(?! line)')
 EXPECT_ERROR_LINE_PATTERN = re.compile(r'// expect error line (\d+)')
 EXPECT_RUNTIME_ERROR_PATTERN = re.compile(r'// expect (handled )?runtime error: (.+)')
+EXPECT_WARNING_PATTERN = re.compile(r'// expect warning(?! line)')
+EXPECT_WARNING_LINE_PATTERN = re.compile(r'// expect warning line (\d+)')
 ERROR_PATTERN = re.compile(r'\[.* line (\d+)\] Error')
+WARNING_PATTERN = re.compile(r'\[.* line (\d+)\] Warning')
 STACK_TRACE_PATTERN = re.compile(r'(?:\[\./)?test/.* line (\d+)\] in')
 STDIN_PATTERN = re.compile(r'// stdin: (.*)')
 SKIP_PATTERN = re.compile(r'// skip: (.*)')
@@ -58,6 +61,7 @@ class Test:
     self.path = path
     self.output = []
     self.compile_errors = set()
+    self.compile_warnings = set()
     self.runtime_error_line = 0
     self.runtime_error_message = None
     self.exit_code = 0
@@ -108,6 +112,16 @@ class Test:
 
           # If we expect a compile error, it should exit with WREN_EX_DATAERR.
           self.exit_code = 65
+          expectations += 1
+
+        match = EXPECT_WARNING_PATTERN.search(line)
+        if match:
+          self.compile_warnings.add(line_num)
+          expectations += 1
+
+        match = EXPECT_WARNING_LINE_PATTERN.search(line)
+        if match:
+          self.compile_warnings.add(int(match.group(1)))
           expectations += 1
 
         match = EXPECT_RUNTIME_ERROR_PATTERN.search(line)
@@ -237,8 +251,9 @@ class Test:
 
 
   def validate_compile_errors(self, error_lines):
-    # Validate that every compile error was expected.
+    # Validate that every compile error and warning was expected.
     found_errors = set()
+    found_warnings = set()
     for line in error_lines:
       match = ERROR_PATTERN.search(line)
       if match:
@@ -248,13 +263,26 @@ class Test:
         else:
           self.fail('Unexpected error:')
           self.fail(line)
-      elif line != '':
-        self.fail('Unexpected output on stderr:')
-        self.fail(line)
+      else:
+        match = WARNING_PATTERN.search(line)
+        if match:
+          warning_line = float(match.group(1))
+          if warning_line in self.compile_warnings:
+            found_warnings.add(warning_line)
+          else:
+            self.fail('Unexpected warning:')
+            self.fail(line)
+        elif line != '':
+          self.fail('Unexpected output on stderr:')
+          self.fail(line)
 
     # Validate that every expected error occurred.
     for line in self.compile_errors - found_errors:
       self.fail('Missing expected error on line {0}.', line)
+
+    # Validate that every expected warning occurred.
+    for line in self.compile_warnings - found_warnings:
+      self.fail('Missing expected warning on line {0}.', line)
 
 
   def validate_exit_code(self, exit_code, error_lines):

@@ -1352,8 +1352,17 @@ static void consumeTypeAnnotation(Compiler* compiler,
   if (match(compiler, TOKEN_COLON))
   {
     consume(compiler, TOKEN_NAME, "Expect type name after ':'.");
-    *typeName = compiler->parser->previous.start;
-    *typeLength = compiler->parser->previous.length;
+    // Only capture the type if consume succeeded (previous is a NAME token).
+    if (compiler->parser->previous.type == TOKEN_NAME)
+    {
+      *typeName = compiler->parser->previous.start;
+      *typeLength = compiler->parser->previous.length;
+    }
+    else
+    {
+      *typeName = NULL;
+      *typeLength = 0;
+    }
   }
   else
   {
@@ -2405,6 +2414,25 @@ static void bareName(Compiler* compiler, bool canAssign, Variable variable)
   {
     // Compile the right-hand side.
     expression(compiler);
+
+    // [WREN_TYPE_ANNOTATIONS] Check assignment type against annotation.
+    if (variable.scope == SCOPE_LOCAL)
+    {
+      int typeLen;
+      const char* varType = wrenTypeCheckerGetLocalType(
+          &compiler->typeChecker, variable.index, &typeLen);
+      if (varType != NULL && !wrenTypeCheckerTypesMatch(
+          varType, typeLen,
+          compiler->typeChecker.lastExprType,
+          compiler->typeChecker.lastExprTypeLength))
+      {
+        typeWarning(compiler,
+            "Type mismatch: variable expects '%.*s' but got '%.*s'.",
+            typeLen, varType,
+            compiler->typeChecker.lastExprTypeLength,
+            compiler->typeChecker.lastExprType);
+      }
+    }
 
     // Emit the store instruction.
     switch (variable.scope)
@@ -3841,6 +3869,18 @@ static void variableDefinition(Compiler* compiler)
   {
     // Default initialize it to null.
     null(compiler, false);
+  }
+
+  // [WREN_TYPE_ANNOTATIONS] Check initializer type against annotation.
+  if (varType != NULL && !wrenTypeCheckerTypesMatch(
+      varType, varTypeLen,
+      compiler->typeChecker.lastExprType,
+      compiler->typeChecker.lastExprTypeLength))
+  {
+    typeWarning(compiler, "Type mismatch: variable expects '%.*s' but got '%.*s'.",
+                varTypeLen, varType,
+                compiler->typeChecker.lastExprTypeLength,
+                compiler->typeChecker.lastExprType);
   }
 
   // Now put it in scope.
