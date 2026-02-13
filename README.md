@@ -1,3 +1,14 @@
+### This fork allows for type annotations in the language
+The compiler just skips them, but external tools can be used to provide diagnostics.
+
+```dart
+var val : Num = 0
+
+class Wren {
+   add(a : Num, b : Num) -> Num { a + b }
+}
+```
+
 ## Wren is a small, fast, class-based concurrent scripting language
 
 Think Smalltalk in a Lua-sized package with a dash of Erlang and wrapped up in
