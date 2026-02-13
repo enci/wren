@@ -1,4 +1,4 @@
-### This fork allows for type annotations in the language
+### Note - This fork allows for type annotations in the language
 The compiler just skips them, but external tools can be used to provide diagnostics.
 
 ```dart
@@ -8,6 +8,11 @@ class Wren {
    add(a : Num, b : Num) -> Num { a + b }
 }
 ```
+You can use the standalone [wren-analyzer] or [wren-vscode] integration. 
+
+[wren-analyzer]: https://github.com/enci/wren-analyzer
+[wren-vscode]: https://marketplace.visualstudio.com/items?itemName=BojanEndrovski.wren
+
 
 ## Wren is a small, fast, class-based concurrent scripting language
 
