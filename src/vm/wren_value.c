@@ -64,6 +64,9 @@ ObjClass* wrenNewSingleClass(WrenVM* vm, int numFields, ObjString* name)
   classObj->numFields = numFields;
   classObj->name = name;
   classObj->attributes = NULL_VAL;
+  #if WREN_DEBUGGER
+    classObj->module = NULL;
+  #endif
 
   wrenPushRoot(vm, (Obj*)classObj);
   wrenMethodBufferInit(&classObj->methods);
@@ -672,6 +675,9 @@ ObjModule* wrenNewModule(WrenVM* vm, ObjString* name)
   wrenValueBufferInit(&module->variables);
 
   module->name = name;
+  #if WREN_DEBUGGER
+    module->classFields = NULL;
+  #endif
 
   wrenPopRoot(vm);
   return module;
@@ -1048,6 +1054,10 @@ static void blackenClass(WrenVM* vm, ObjClass* classObj)
 
   if(!IS_NULL(classObj->attributes)) wrenGrayObj(vm, AS_OBJ(classObj->attributes));
 
+  #if WREN_DEBUGGER
+    wrenGrayObj(vm, (Obj*)classObj->module);
+  #endif
+
   // Keep track of how much memory is still in use.
   vm->bytesAllocated += sizeof(ObjClass);
   vm->bytesAllocated += classObj->methods.capacity * sizeof(Method);
@@ -1181,6 +1191,10 @@ static void blackenModule(WrenVM* vm, ObjModule* module)
   wrenBlackenSymbolTable(vm, &module->variableNames);
 
   wrenGrayObj(vm, (Obj*)module->name);
+
+  #if WREN_DEBUGGER
+    wrenGrayObj(vm, module->classFields);
+  #endif
 
   // Keep track of how much memory is still in use.
   vm->bytesAllocated += sizeof(ObjModule);

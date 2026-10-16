@@ -1354,6 +1354,9 @@ static WrenInterpretResult runInterpreter(WrenVM* vm, register ObjFiber* fiber)
     {
       createClass(vm, READ_BYTE(), NULL);
       if (wrenHasError(fiber)) RUNTIME_ERROR();
+      #if WREN_DEBUGGER
+        AS_CLASS(fiber->stackTop[-1])->module = fn->module;
+      #endif
       DISPATCH();
     }
 

@@ -3633,6 +3633,29 @@ static bool method(Compiler* compiler, Variable classVariable)
   return true;
 }
 
+#if WREN_DEBUGGER
+// Remembers the names of the fields [classInfo] declares in the module, so the
+// debugger can show them instead of anonymous slots.
+static void recordClassFields(Compiler* compiler, ObjString* className,
+                              ClassInfo* classInfo)
+{
+  WrenVM* vm = compiler->parser->vm;
+  ObjModule* module = compiler->parser->module;
+
+  if (module->classFields == NULL) module->classFields = (Obj*)wrenNewMap(vm);
+
+  ObjList* names = wrenNewList(vm, 0);
+  wrenPushRoot(vm, (Obj*)names);
+  for (int i = 0; i < classInfo->fields.count; i++)
+  {
+    wrenListInsert(vm, names, OBJ_VAL(classInfo->fields.data[i]),
+                   names->elements.count);
+  }
+  wrenMapSet(vm, (ObjMap*)module->classFields, OBJ_VAL(className), OBJ_VAL(names));
+  wrenPopRoot(vm);
+}
+#endif
+
 // Compiles a class definition. Assumes the "class" token has already been
 // consumed (along with a possibly preceding "foreign" token).
 static void classDefinition(Compiler* compiler, bool isForeign)
@@ -3742,6 +3765,10 @@ static void classDefinition(Compiler* compiler, bool isForeign)
         (uint8_t)classInfo.fields.count;
   }
   
+  #if WREN_DEBUGGER
+    recordClassFields(compiler, className, &classInfo);
+  #endif
+
   // Clear symbol tables for tracking field and method names.
   wrenSymbolTableClear(compiler->parser->vm, &classInfo.fields);
   wrenIntBufferClear(compiler->parser->vm, &classInfo.methods);

@@ -257,6 +257,14 @@ typedef struct
 
   // The name of the module.
   ObjString* name;
+
+  #if WREN_DEBUGGER
+    // Maps the name of each class defined in this module to a list of the names
+    // of the fields that class declares itself (not the inherited ones), in
+    // order. Created when the first class is compiled, so it may be NULL. It is
+    // an ObjMap, declared as Obj because ObjMap is defined further down.
+    Obj* classFields;
+  #endif
 } ObjModule;
 
 // A function object. It wraps and owns the bytecode and other debug information
@@ -436,6 +444,12 @@ struct sObjClass
   
   // The ClassAttribute for the class, if any
   Value attributes;
+
+  #if WREN_DEBUGGER
+    // The module the class was defined in, so a debugger can find its field
+    // names in [ObjModule.classFields]. NULL for built-in classes.
+    ObjModule* module;
+  #endif
 };
 
 typedef struct
