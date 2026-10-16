@@ -34,6 +34,19 @@
 DEFINE_BUFFER(Value, Value);
 DEFINE_BUFFER(Method, Method);
 
+#if WREN_DEBUGGER
+DEFINE_BUFFER(DebugVariable, DebugVariable);
+
+static void clearDebugVariables(WrenVM* vm, DebugVariableBuffer* variables)
+{
+  for (int i = 0; i < variables->count; i++)
+  {
+    DEALLOCATE(vm, variables->data[i].name);
+  }
+  wrenDebugVariableBufferClear(vm, variables);
+}
+#endif
+
 static void initObj(WrenVM* vm, Obj* obj, ObjType type, ObjClass* classObj)
 {
   obj->type = type;
@@ -246,6 +259,10 @@ ObjFn* wrenNewFunction(WrenVM* vm, ObjModule* module, int maxSlots)
   FnDebug* debug = ALLOCATE(vm, FnDebug);
   debug->name = NULL;
   wrenIntBufferInit(&debug->sourceLines);
+  #if WREN_DEBUGGER
+    wrenDebugVariableBufferInit(&debug->locals);
+    wrenDebugVariableBufferInit(&debug->upvalues);
+  #endif
 
   ObjFn* fn = ALLOCATE(vm, ObjFn);
   initObj(vm, &fn->obj, OBJ_FN, vm->fnClass);
@@ -1254,6 +1271,10 @@ void wrenFreeObj(WrenVM* vm, Obj* obj)
       wrenValueBufferClear(vm, &fn->constants);
       wrenByteBufferClear(vm, &fn->code);
       wrenIntBufferClear(vm, &fn->debug->sourceLines);
+      #if WREN_DEBUGGER
+        clearDebugVariables(vm, &fn->debug->locals);
+        clearDebugVariables(vm, &fn->debug->upvalues);
+      #endif
       DEALLOCATE(vm, fn->debug->name);
       DEALLOCATE(vm, fn->debug);
       break;

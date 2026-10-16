@@ -202,6 +202,23 @@ typedef struct sObjUpvalue
 // or modifies the running fiber, it returns `false`.
 typedef bool (*Primitive)(WrenVM* vm, Value* args);
 
+#if WREN_DEBUGGER
+// A named variable of a function, kept so a debugger can show it. For locals
+// [slot] is the stack slot relative to the frame, for upvalues it is the
+// index into the closure's upvalues. [startIp] and [endIp] are offsets into the
+// function's bytecode and give the range where the local is live: it is live
+// for startIp <= ip < endIp. Upvalues are live for the whole function.
+typedef struct
+{
+  char* name;
+  int slot;
+  int startIp;
+  int endIp;
+} DebugVariable;
+
+DECLARE_BUFFER(DebugVariable, DebugVariable);
+#endif
+
 // TODO: See if it's actually a perf improvement to have this in a separate
 // struct instead of in ObjFn.
 // Stores debugging information for a function used for things like stack
@@ -215,6 +232,12 @@ typedef struct
   // bytecode in the function's bytecode array. The value of that element is
   // the line in the source code that generated that instruction.
   IntBuffer sourceLines;
+
+  #if WREN_DEBUGGER
+    // The local variables and upvalues of the function, by name.
+    DebugVariableBuffer locals;
+    DebugVariableBuffer upvalues;
+  #endif
 } FnDebug;
 
 // A loaded module and the top-level variables it defines.
