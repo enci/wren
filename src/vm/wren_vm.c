@@ -96,6 +96,13 @@ WrenVM* wrenNewVM(WrenConfiguration* config)
   return vm;
 }
 
+#if WREN_DEBUGGER
+void wrenSetDebugHook(WrenVM* vm, WrenDebugHookFn hook)
+{
+  vm->debugHook = hook;
+}
+#endif
+
 void wrenFreeVM(WrenVM* vm)
 {
   ASSERT(vm->methodNames.count > 0, "VM appears to have already been freed.");
@@ -406,6 +413,24 @@ static void runtimeError(WrenVM* vm)
 
   ObjFiber* current = vm->fiber;
   Value error = current->error;
+
+  #if WREN_DEBUGGER
+  if (vm->debugHook != NULL)
+  {
+    // Only tell the debugger about errors that nothing is going to catch.
+    bool caught = false;
+    for (ObjFiber* fiber = current; fiber != NULL; fiber = fiber->caller)
+    {
+      if (fiber->state == FIBER_TRY) { caught = true; break; }
+    }
+
+    if (!caught)
+    {
+      vm->debugHook(vm, WREN_DEBUG_EVENT_ERROR,
+                    IS_STRING(error) ? AS_CSTRING(error) : NULL);
+    }
+  }
+  #endif
   
   while (current != NULL)
   {
@@ -887,6 +912,27 @@ static WrenInterpretResult runInterpreter(WrenVM* vm, register ObjFiber* fiber)
     #define DEBUG_TRACE_INSTRUCTIONS() do { } while (false)
   #endif
 
+  #if WREN_DEBUGGER
+    // Tells the debug hook when execution reaches the start of a source line
+    // (or a function). The frame is stored first so the hook can see the ip.
+    #define DEBUG_HOOK()                                                       \
+        do                                                                     \
+        {                                                                      \
+          if (vm->debugHook != NULL)                                           \
+          {                                                                    \
+            int offset = (int)(ip - fn->code.data);                            \
+            const int* lines = fn->debug->sourceLines.data;                    \
+            if (offset == 0 || lines[offset] != lines[offset - 1])             \
+            {                                                                  \
+              STORE_FRAME();                                                   \
+              vm->debugHook(vm, WREN_DEBUG_EVENT_LINE, NULL);                  \
+            }                                                                  \
+          }                                                                    \
+        } while (false)
+  #else
+    #define DEBUG_HOOK() do { } while (false)
+  #endif
+
   #if WREN_COMPUTED_GOTO
 
   static void* dispatchTable[] = {
@@ -902,6 +948,7 @@ static WrenInterpretResult runInterpreter(WrenVM* vm, register ObjFiber* fiber)
       do                                                                       \
       {                                                                        \
         DEBUG_TRACE_INSTRUCTIONS();                                            \
+        DEBUG_HOOK();                                                          \
         goto *dispatchTable[instruction = (Code)READ_BYTE()];                  \
       } while (false)
 
@@ -910,6 +957,7 @@ static WrenInterpretResult runInterpreter(WrenVM* vm, register ObjFiber* fiber)
   #define INTERPRET_LOOP                                                       \
       loop:                                                                    \
         DEBUG_TRACE_INSTRUCTIONS();                                            \
+        DEBUG_HOOK();                                                          \
         switch (instruction = (Code)READ_BYTE())
 
   #define CASE_CODE(name)  case CODE_##name
@@ -1306,6 +1354,9 @@ static WrenInterpretResult runInterpreter(WrenVM* vm, register ObjFiber* fiber)
     {
       createClass(vm, READ_BYTE(), NULL);
       if (wrenHasError(fiber)) RUNTIME_ERROR();
+      #if WREN_DEBUGGER
+        AS_CLASS(fiber->stackTop[-1])->module = fn->module;
+      #endif
       DISPATCH();
     }
 

@@ -100,6 +100,11 @@ struct WrenVM
   Value* apiStack;
 
   WrenConfiguration config;
+
+  #if WREN_DEBUGGER
+    // The debug hook installed with wrenSetDebugHook(), or NULL.
+    WrenDebugHookFn debugHook;
+  #endif
   
   // Compiler and debugger data:
 

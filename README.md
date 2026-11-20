@@ -13,6 +13,24 @@ You can use the standalone [wren-analyzer] or [wren-vscode] integration.
 [wren-analyzer]: https://github.com/enci/wren-analyzer
 [wren-vscode]: https://marketplace.visualstudio.com/items?itemName=BojanEndrovski.wren
 
+### Note - This fork has hooks for debuggers
+Build with `-DWREN_DEBUGGER=1` and install a hook with `wrenSetDebugHook()`. The VM
+then calls it at the start of every source line and before an uncaught runtime error
+unwinds. The compiler also keeps the names of locals, upvalues and class fields, so a
+host can show them. There is no networking or protocol in the VM, the host decides how
+to talk to a debugger. Without the flag the VM is unchanged.
+
+```c
+void hook(WrenVM* vm, WrenDebugEvent event, const char* message) {
+  // WREN_DEBUG_EVENT_LINE or WREN_DEBUG_EVENT_ERROR, inspect vm->fiber here
+}
+
+wrenSetDebugHook(vm, hook);
+```
+The [xs] game engine uses this to debug scripts in VS Code over the Debug Adapter Protocol.
+
+[xs]: https://github.com/BredaUniversityGames/xs
+
 
 ## Wren is a small, fast, class-based concurrent scripting language
 

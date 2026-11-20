@@ -316,6 +316,34 @@ WREN_API WrenVM* wrenNewVM(WrenConfiguration* configuration);
 // call to [wrenNewVM].
 WREN_API void wrenFreeVM(WrenVM* vm);
 
+#ifndef WREN_DEBUGGER
+  #define WREN_DEBUGGER 0
+#endif
+
+#if WREN_DEBUGGER
+// The events a debug hook is told about.
+typedef enum
+{
+  // The VM is about to execute the first instruction of a source line, or of a
+  // function. The hook can inspect the running fiber, then returns to resume.
+  WREN_DEBUG_EVENT_LINE,
+
+  // A runtime error is about to abort every fiber because nothing catches it.
+  // The stack is still intact. The error message is passed in `message`.
+  WREN_DEBUG_EVENT_ERROR
+} WrenDebugEvent;
+
+// Called by the VM when a debug event happens. The hook runs on the VM thread
+// and may block (for example while paused). It must not run Wren code or
+// allocate Wren objects. `message` is NULL except for WREN_DEBUG_EVENT_ERROR.
+typedef void (*WrenDebugHookFn)(WrenVM* vm, WrenDebugEvent event,
+                                const char* message);
+
+// Installs [hook], or removes it if [hook] is NULL. While a hook is installed,
+// the interpreter checks for line changes before every instruction.
+WREN_API void wrenSetDebugHook(WrenVM* vm, WrenDebugHookFn hook);
+#endif
+
 // Immediately run the garbage collector to free unused memory.
 WREN_API void wrenCollectGarbage(WrenVM* vm);
 

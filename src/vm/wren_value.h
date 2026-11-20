@@ -202,6 +202,23 @@ typedef struct sObjUpvalue
 // or modifies the running fiber, it returns `false`.
 typedef bool (*Primitive)(WrenVM* vm, Value* args);
 
+#if WREN_DEBUGGER
+// A named variable of a function, kept so a debugger can show it. For locals
+// [slot] is the stack slot relative to the frame, for upvalues it is the
+// index into the closure's upvalues. [startIp] and [endIp] are offsets into the
+// function's bytecode and give the range where the local is live: it is live
+// for startIp <= ip < endIp. Upvalues are live for the whole function.
+typedef struct
+{
+  char* name;
+  int slot;
+  int startIp;
+  int endIp;
+} DebugVariable;
+
+DECLARE_BUFFER(DebugVariable, DebugVariable);
+#endif
+
 // TODO: See if it's actually a perf improvement to have this in a separate
 // struct instead of in ObjFn.
 // Stores debugging information for a function used for things like stack
@@ -215,6 +232,12 @@ typedef struct
   // bytecode in the function's bytecode array. The value of that element is
   // the line in the source code that generated that instruction.
   IntBuffer sourceLines;
+
+  #if WREN_DEBUGGER
+    // The local variables and upvalues of the function, by name.
+    DebugVariableBuffer locals;
+    DebugVariableBuffer upvalues;
+  #endif
 } FnDebug;
 
 // A loaded module and the top-level variables it defines.
@@ -234,6 +257,14 @@ typedef struct
 
   // The name of the module.
   ObjString* name;
+
+  #if WREN_DEBUGGER
+    // Maps the name of each class defined in this module to a list of the names
+    // of the fields that class declares itself (not the inherited ones), in
+    // order. Created when the first class is compiled, so it may be NULL. It is
+    // an ObjMap, declared as Obj because ObjMap is defined further down.
+    Obj* classFields;
+  #endif
 } ObjModule;
 
 // A function object. It wraps and owns the bytecode and other debug information
@@ -413,6 +444,12 @@ struct sObjClass
   
   // The ClassAttribute for the class, if any
   Value attributes;
+
+  #if WREN_DEBUGGER
+    // The module the class was defined in, so a debugger can find its field
+    // names in [ObjModule.classFields]. NULL for built-in classes.
+    ObjModule* module;
+  #endif
 };
 
 typedef struct

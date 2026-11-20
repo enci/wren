@@ -223,6 +223,11 @@ typedef struct
 
   // If this local variable is being used as an upvalue.
   bool isUpvalue;
+
+  #if WREN_DEBUGGER
+    // The index of this variable in the function's debug locals.
+    int debugIndex;
+  #endif
 } Local;
 
 typedef struct
@@ -570,6 +575,9 @@ static void initCompiler(Compiler* compiler, Parser* parser, Compiler* parent,
   
   compiler->locals[0].depth = -1;
   compiler->locals[0].isUpvalue = false;
+  #if WREN_DEBUGGER
+    compiler->locals[0].debugIndex = -1;
+  #endif
 
   if (parent == NULL)
   {
@@ -1399,6 +1407,26 @@ static void emitConstant(Compiler* compiler, Value value)
   emitShortArg(compiler, CODE_CONSTANT, constant);
 }
 
+#if WREN_DEBUGGER
+// Records a named variable in [variables] for the debugger. The variable is
+// live from [startIp] until it is closed with [endDebugVariable]. Returns its
+// index in [variables].
+static int addDebugVariable(WrenVM* vm, DebugVariableBuffer* variables,
+                            const char* name, int length, int slot,
+                            int startIp)
+{
+  DebugVariable variable;
+  variable.name = ALLOCATE_ARRAY(vm, char, length + 1);
+  memcpy(variable.name, name, length);
+  variable.name[length] = '\0';
+  variable.slot = slot;
+  variable.startIp = startIp;
+  variable.endIp = -1;
+  wrenDebugVariableBufferWrite(vm, variables, variable);
+  return variables->count - 1;
+}
+#endif
+
 // Create a new local variable with [name]. Assumes the current scope is local
 // and the name is unique.
 static int addLocal(Compiler* compiler, const char* name, int length)
@@ -1408,6 +1436,18 @@ static int addLocal(Compiler* compiler, const char* name, int length)
   local->length = length;
   local->depth = compiler->scopeDepth;
   local->isUpvalue = false;
+
+  #if WREN_DEBUGGER
+    // Skip the hidden locals the compiler makes for loops, e.g. "seq ".
+    local->debugIndex = -1;
+    if (memchr(name, ' ', length) == NULL)
+    {
+      local->debugIndex = addDebugVariable(compiler->parser->vm,
+          &compiler->fn->debug->locals, name, length, compiler->numLocals,
+          compiler->fn->code.count);
+    }
+  #endif
+
   return compiler->numLocals++;
 }
 
@@ -1491,7 +1531,19 @@ static void defineVariable(Compiler* compiler, int symbol)
 {
   // Store the variable. If it's a local, the result of the initializer is
   // in the correct slot on the stack already so we're done.
-  if (compiler->scopeDepth >= 0) return;
+  if (compiler->scopeDepth >= 0)
+  {
+    #if WREN_DEBUGGER
+      // The variable only holds a value once its initializer has run.
+      int debugIndex = compiler->locals[symbol].debugIndex;
+      if (debugIndex != -1)
+      {
+        compiler->fn->debug->locals.data[debugIndex].startIp =
+            compiler->fn->code.count;
+      }
+    #endif
+    return;
+  }
 
   // It's a module-level variable, so store the value in the module slot and
   // then discard the temporary for the initializer.
@@ -1545,6 +1597,19 @@ static int discardLocals(Compiler* compiler, int depth)
 static void popScope(Compiler* compiler)
 {
   int popped = discardLocals(compiler, compiler->scopeDepth);
+
+  #if WREN_DEBUGGER
+    for (int i = compiler->numLocals - popped; i < compiler->numLocals; i++)
+    {
+      int debugIndex = compiler->locals[i].debugIndex;
+      if (debugIndex != -1)
+      {
+        compiler->fn->debug->locals.data[debugIndex].endIp =
+            compiler->fn->code.count;
+      }
+    }
+  #endif
+
   compiler->numLocals -= popped;
   compiler->numSlots -= popped;
   compiler->scopeDepth--;
@@ -1571,7 +1636,8 @@ static int resolveLocal(Compiler* compiler, const char* name, int length)
 // Adds an upvalue to [compiler]'s function with the given properties. Does not
 // add one if an upvalue for that variable is already in the list. Returns the
 // index of the upvalue.
-static int addUpvalue(Compiler* compiler, bool isLocal, int index)
+static int addUpvalue(Compiler* compiler, bool isLocal, int index,
+                      const char* name, int length)
 {
   // Look for an existing one.
   for (int i = 0; i < compiler->fn->numUpvalues; i++)
@@ -1583,6 +1649,12 @@ static int addUpvalue(Compiler* compiler, bool isLocal, int index)
   // If we got here, it's a new upvalue.
   compiler->upvalues[compiler->fn->numUpvalues].isLocal = isLocal;
   compiler->upvalues[compiler->fn->numUpvalues].index = index;
+
+  #if WREN_DEBUGGER
+    addDebugVariable(compiler->parser->vm, &compiler->fn->debug->upvalues,
+                     name, length, compiler->fn->numUpvalues, 0);
+  #endif
+
   return compiler->fn->numUpvalues++;
 }
 
@@ -1614,7 +1686,7 @@ static int findUpvalue(Compiler* compiler, const char* name, int length)
     // scope.
     compiler->parent->locals[local].isUpvalue = true;
 
-    return addUpvalue(compiler, true, local);
+    return addUpvalue(compiler, true, local, name, length);
   }
 
   // See if it's an upvalue in the immediately enclosing function. In other
@@ -1626,7 +1698,7 @@ static int findUpvalue(Compiler* compiler, const char* name, int length)
   int upvalue = findUpvalue(compiler->parent, name, length);
   if (upvalue != -1)
   {
-    return addUpvalue(compiler, false, upvalue);
+    return addUpvalue(compiler, false, upvalue, name, length);
   }
 
   // If we got here, we walked all the way up the parent chain and couldn't
@@ -1718,6 +1790,20 @@ static ObjFn* endCompiler(Compiler* compiler,
       emitByte(compiler->parent, compiler->upvalues[i].index);
     }
   }
+
+  #if WREN_DEBUGGER
+    // Locals in the outermost scope are never popped, they live to the end.
+    DebugVariableBuffer* locals = &compiler->fn->debug->locals;
+    for (int i = 0; i < locals->count; i++)
+    {
+      if (locals->data[i].endIp == -1) locals->data[i].endIp = compiler->fn->code.count;
+    }
+    DebugVariableBuffer* upvalues = &compiler->fn->debug->upvalues;
+    for (int i = 0; i < upvalues->count; i++)
+    {
+      upvalues->data[i].endIp = compiler->fn->code.count;
+    }
+  #endif
 
   // Pop this compiler off the stack.
   compiler->parser->vm->compiler = compiler->parent;
@@ -3547,6 +3633,29 @@ static bool method(Compiler* compiler, Variable classVariable)
   return true;
 }
 
+#if WREN_DEBUGGER
+// Remembers the names of the fields [classInfo] declares in the module, so the
+// debugger can show them instead of anonymous slots.
+static void recordClassFields(Compiler* compiler, ObjString* className,
+                              ClassInfo* classInfo)
+{
+  WrenVM* vm = compiler->parser->vm;
+  ObjModule* module = compiler->parser->module;
+
+  if (module->classFields == NULL) module->classFields = (Obj*)wrenNewMap(vm);
+
+  ObjList* names = wrenNewList(vm, 0);
+  wrenPushRoot(vm, (Obj*)names);
+  for (int i = 0; i < classInfo->fields.count; i++)
+  {
+    wrenListInsert(vm, names, OBJ_VAL(classInfo->fields.data[i]),
+                   names->elements.count);
+  }
+  wrenMapSet(vm, (ObjMap*)module->classFields, OBJ_VAL(className), OBJ_VAL(names));
+  wrenPopRoot(vm);
+}
+#endif
+
 // Compiles a class definition. Assumes the "class" token has already been
 // consumed (along with a possibly preceding "foreign" token).
 static void classDefinition(Compiler* compiler, bool isForeign)
@@ -3656,6 +3765,10 @@ static void classDefinition(Compiler* compiler, bool isForeign)
         (uint8_t)classInfo.fields.count;
   }
   
+  #if WREN_DEBUGGER
+    recordClassFields(compiler, className, &classInfo);
+  #endif
+
   // Clear symbol tables for tracking field and method names.
   wrenSymbolTableClear(compiler->parser->vm, &classInfo.fields);
   wrenIntBufferClear(compiler->parser->vm, &classInfo.methods);
